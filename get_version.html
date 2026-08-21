@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>最新バージョン自動取得＆CSV出力</title>
+    <!-- Axios読み込み（正しいSRIハッシュを設定、または削除して利用） -->
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.7.9/dist/axios.min.js" 
+            integrity="sha384-2I3iXyUpI6lC4M3K6b+KqP1l30lqJ2MhZ/aD1u4sU8=" 
+            crossorigin="anonymous"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+        }
+        .card {
+            background: #ffffff;
+            padding: 30px 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+        h2 { margin-top: 0; color: #1a1a1a; font-size: 20px; }
+        p { color: #666; font-size: 14px; margin-bottom: 24px; }
+        button {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 15px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #0052a3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #status { margin-top: 16px; font-size: 13px; color: #444; min-height: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>バージョン情報一括取得</h2>
+    <p>最新のバージョン情報を取得して<br>CSVファイルとして出力します。</p>
+    <button id="downloadBtn">CSVをダウンロード</button>
+    <div id="status"></div>
+</div>
+
+<script>
+// CSVインジェクション対策用関数
+function sanitizeForCSV(val) {
+    if (typeof val !== 'string') return val;
+    if (/^[=+@\-\t\r]/.test(val)) {
+        val = "'" + val;
+    }
+    return `"${val.replace(/"/g, '""')}"`;
+}
+
+async function fetchVersions() {
+    const targets = [
+        { name: 'Python', url: 'https://endoflife.date/api/python.json', usage: '汎用・データ分析・AI開発', site: 'https://www.python.org/' },
+        { name: 'Julia', url: 'https://endoflife.date/api/julia.json', usage: '科学技術計算・数値解析', site: 'https://julialang.org/' },
+        { name: 'Rust', url: 'https://endoflife.date/api/rust.json', usage: 'システムプログラミング', site: 'https://www.rust-lang.org/' },
+        { name: 'Go', url: 'https://endoflife.date/api/go.json', usage: 'バックエンド・クラウド基盤', site: 'https://go.dev/' }
+    ];
+
+    const results = [
+        ['言語 / ツール名', '最新バージョン', '主な用途', '公式サイトURL']
+    ];
+
+    const requests = targets.map(t => axios.get(t.url).catch(() => null));
+    const responses = await Promise.all(requests);
+
+    responses.forEach((res, index) => {
+        const target = targets[index];
+        const version = (res && res.data && res.data[0]) ? String(res.data[0].latest) : '取得失敗';
+        results.push([target.name, version, target.usage, target.site]);
+    });
+
+    return results;
+}
+
+async function executeDownload() {
+    const btn = document.getElementById('downloadBtn');
+    const status = document.getElementById('status');
+
+    btn.disabled = true;
+    status.innerText = '通信中... 最新データを取得しています';
+
+    try {
+        const data = await fetchVersions();
+
+        const csvText = data.map(row => row.map(val => sanitizeForCSV(val)).join(',')).join('\r\n');
+
+        const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+        const blob = new Blob([bom, csvText], { type: 'text/csv;charset=utf-8;' });
+
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.download = 'latest_versions.csv';
+        link.click();
+
+        // メモリの自動解放
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+        status.innerText = '✔ ダウンロードが完了しました！';
+    } catch (error) {
+        status.innerText = '× エラーが発生しました: ' + error.message;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// イベントリスナーの登録
+document.getElementById('downloadBtn').addEventListener('click', executeDownload);
+</script>
+
+</body>
+</html>
